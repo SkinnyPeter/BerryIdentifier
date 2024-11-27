@@ -123,6 +123,7 @@ class BerryDetector:
     def add_text_overlay(self, display):
         # Prepare text for display
         text_lines = [
+            f"Berry Detector",
             f"Dominant Color: {self.dominant_color.upper()}",
             f"Red Berries: {self.red_rate:.2f}%",
             f"Black Berries: {self.black_rate:.2f}%", 
