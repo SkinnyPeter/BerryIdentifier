@@ -1,4 +1,3 @@
 .env
 
-captured_images/*    # Ignore all contents of the folder
-!captured_images/    # Do not ignore the folder itself
+./captured_images
