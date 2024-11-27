@@ -1,5 +1,7 @@
 import cv2
 import numpy as np
+import os
+from datetime import datetime
 
 # Adjustable parameters
 CAMERA_PORT = 0
@@ -8,6 +10,8 @@ FRAME_HEIGHT = 480
 FPS = 30
 FLIP_IMAGE = False
 BRIGHTNESS_COMPENSATION = 50  # New parameter to compensate for brightness
+OUTPUT_DIR = 'captured_images'
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 class BerryDetector:
     def __init__(self):
@@ -169,9 +173,22 @@ class BerryDetector:
             # Show the display
             cv2.imshow('Berry Detection', display_full)
 
-            # Break loop if 'q' is pressed
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            # Wait for a key press and handle 'q' or 'c'
+            key = cv2.waitKey(1) & 0xFF
+
+            # Break the loop if 'q' is pressed
+            if key == ord('q'):
+                print("Exiting..")
                 break
+
+            # Capture the image if 'c' is pressed
+            if key == ord('c'):
+                # We want to give the image a unique ID, lets use the date time
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                # Save the captured frame
+                image_path = os.path.join(OUTPUT_DIR, f'captured_image_{timestamp}.jpg')
+                cv2.imwrite(image_path, frame)
+                print(f"Image saved at {image_path}")
 
         # Release everything when done
         self.cap.release()
