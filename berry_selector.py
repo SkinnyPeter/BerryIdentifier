@@ -5,9 +5,9 @@ from datetime import datetime
 
 # Adjustable parameters
 CAMERA_PORT = 0
-FRAME_WIDTH = 640
-FRAME_HEIGHT = 480
-FPS = 30
+FRAME_WIDTH = 320
+FRAME_HEIGHT = 240
+FPS = 15
 FLIP_IMAGE = False
 BRIGHTNESS_COMPENSATION = 50  # New parameter to compensate for brightness
 OUTPUT_DIR = 'captured_images'
@@ -190,6 +190,17 @@ class BerryDetector:
                 cv2.imwrite(image_path, frame)
                 print(f"Image saved at {image_path}")
 
+            if key == ord('d'):
+                # Log the berry detected - the dominant color
+                if (self.dominant_color.upper() == 'RED'):
+                    print("RED BERRY detected")
+                
+                if (self.dominant_color.upper() == 'BLACK'):
+                    print("BLUE BERRY detected")
+                
+                if (self.dominant_color.upper() == 'WHITE'):
+                    print("UNRIPE BERRY detected")
+                    
         # Release everything when done
         self.cap.release()
         cv2.destroyAllWindows()
