@@ -27,10 +27,7 @@ class BerryDetector:
         self.RED_LOWER2 = np.array([160, 100, 100])
         self.RED_UPPER2 = np.array([180, 255, 255])
         
-        self.BLACK_LOWER = np.array([0, 0, 0])
-        self.BLACK_UPPER = np.array([180, 100, 50])
-        
-        self.WHITE_LOWER = np.array([0, 0, 200])
+        self.WHITE_LOWER = np.array([0, 0, 150])
         self.WHITE_UPPER = np.array([180, 50, 255])
         
         # Parameters for detection
@@ -40,33 +37,32 @@ class BerryDetector:
         
         # Color rate tracking
         self.white_rate = 0.0
-        self.black_rate = 0.0
         self.red_rate = 0.0
         self.dominant_color = ''
     
-    def calculate_color_rates(self, mask_red, mask_black, mask_white, frame):
+    def calculate_color_rates(self, mask_red, mask_white, frame):
         # Calculate total frame area
         total_area = frame.shape[0] * frame.shape[1]
         
         # Calculate areas of detected colors
         red_area = np.sum(mask_red) / 255
-        black_area = np.sum(mask_black) / 255
         white_area = np.sum(mask_white) / 255
         
         # Calculate percentages
         self.red_rate = (red_area / total_area) * 100
-        self.black_rate = (black_area / total_area) * 100
         self.white_rate = (white_area / total_area) * 100
         
         # Determine dominant color
         rates = {
             'red': self.red_rate,
-            'black': self.black_rate,
             'white': self.white_rate
         }
         self.dominant_color = max(rates, key=rates.get)
     
     def detect_berries(self, frame):
+        # Adjust brightness if needed
+        frame = cv2.convertScaleAbs(frame, alpha=1, beta=BRIGHTNESS_COMPENSATION)
+        
         # Convert frame to HSV color space
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         
@@ -75,54 +71,30 @@ class BerryDetector:
         mask_red2 = cv2.inRange(hsv, self.RED_LOWER2, self.RED_UPPER2)
         mask_red = cv2.bitwise_or(mask_red1, mask_red2)
         
-        mask_black = cv2.inRange(hsv, self.BLACK_LOWER, self.BLACK_UPPER)
         mask_white = cv2.inRange(hsv, self.WHITE_LOWER, self.WHITE_UPPER)
         
         # Calculate color rates
-        self.calculate_color_rates(mask_red, mask_black, mask_white, frame)
+        self.calculate_color_rates(mask_red, mask_white, frame)
         
         # Create color-filtered frames
         red_filtered = cv2.bitwise_and(frame, frame, mask=mask_red)
-        black_filtered = cv2.bitwise_and(frame, frame, mask=mask_black)
         white_filtered = cv2.bitwise_and(frame, frame, mask=mask_white)
+        
+        # Create masks visualization
+        masks = cv2.cvtColor(mask_red + mask_white, cv2.COLOR_GRAY2BGR)
+        
+        # Create filtered display
+        filtered_display = np.hstack((red_filtered, white_filtered))
         
         # Prepare processed frame with detections
         processed = frame.copy()
-        self.process_mask(mask_red, frame, processed, "Red berry", (0, 0, 255))
-        self.process_mask(mask_black, frame, processed, "Black berry", (0, 0, 0))
-        self.process_mask(mask_white, frame, processed, "White berry", (255, 255, 255))
-        
+
         if FLIP_IMAGE:
             processed = cv2.flip(processed, 1)
             red_filtered = cv2.flip(red_filtered, 1)
-            black_filtered = cv2.flip(black_filtered, 1)
             white_filtered = cv2.flip(white_filtered, 1)
         
-        # Prepare mask visualization
-        masks = np.hstack((mask_red, mask_black, mask_white))
-        masks = cv2.cvtColor(masks, cv2.COLOR_GRAY2RGB)
-        masks = cv2.resize(masks, (FRAME_WIDTH * 2, FRAME_HEIGHT // 2))
-        
-        # Prepare color-filtered frames for display
-        filtered_display = np.hstack((red_filtered, black_filtered, white_filtered))
-        filtered_display = cv2.resize(filtered_display, (FRAME_WIDTH * 3, FRAME_HEIGHT))
-        
         return processed, masks, filtered_display
-    
-    def process_mask(self, mask, original, processed, label, color):
-        # Find and process contours
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            if self.MIN_AREA < area < self.MAX_AREA:
-                perimeter = cv2.arcLength(contour, True)
-                circularity = 4 * np.pi * area / (perimeter * perimeter)
-                if circularity > self.MIN_CIRCULARITY:
-                    x, y, w, h = cv2.boundingRect(contour)
-                    cv2.rectangle(original, (x, y), (x + w, y + h), color, 2)
-                    cv2.rectangle(processed, (x, y), (x + w, y + h), color, 2)
-                    cv2.putText(original, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-                    cv2.putText(processed, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
     
     def add_text_overlay(self, display):
         # Prepare text for display
@@ -130,7 +102,6 @@ class BerryDetector:
             f"Berry Detector",
             f"Dominant Color: {self.dominant_color.upper()}",
             f"Red Berries: {self.red_rate:.2f}%",
-            f"Black Berries: {self.black_rate:.2f}%", 
             f"White Berries: {self.white_rate:.2f}%"
         ]
         
@@ -194,9 +165,6 @@ class BerryDetector:
                 # Log the berry detected - the dominant color
                 if (self.dominant_color.upper() == 'RED'):
                     print("RED BERRY detected")
-                
-                if (self.dominant_color.upper() == 'BLACK'):
-                    print("BLUE BERRY detected")
                 
                 if (self.dominant_color.upper() == 'WHITE'):
                     print("UNRIPE BERRY detected")
