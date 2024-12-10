@@ -9,7 +9,7 @@ FRAME_WIDTH = 320
 FRAME_HEIGHT = 240
 FPS = 15
 FLIP_IMAGE = False
-BRIGHTNESS_COMPENSATION = -30  # New parameter to compensate for brightness
+BRIGHTNESS_COMPENSATION = 50  # New parameter to compensate for brightness
 OUTPUT_DIR = 'captured_images'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -17,18 +17,26 @@ class BerryDetector:
     def __init__(self):
         # Video capture configuration
         self.cap = cv2.VideoCapture(CAMERA_PORT, cv2.CAP_DSHOW)
+        if not self.cap.isOpened():
+            print(f"Error: Camera with index {CAMERA_PORT} could not be opened.")
+            return  # Exit the initialization if the camera can't be opened
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
         self.cap.set(cv2.CAP_PROP_FPS, FPS)
         
         # Color detection parameters (more refined HSV ranges)
-        self.RED_LOWER1 = np.array([0, 90, 50])
+        self.RED_LOWER1 = np.array([0, 100, 100])
         self.RED_UPPER1 = np.array([10, 255, 255])
-        self.RED_LOWER2 = np.array([160, 90, 50])
+        self.RED_LOWER2 = np.array([160, 100, 100])
         self.RED_UPPER2 = np.array([180, 255, 255])
         
-        self.WHITE_LOWER = np.array([0, 0, 100])
+        self.WHITE_LOWER = np.array([0, 0, 200])
         self.WHITE_UPPER = np.array([180, 50, 255])
+        
+        # Parameters for detection
+        self.MIN_CIRCULARITY = 0.7
+        self.MIN_AREA = 50
+        self.MAX_AREA = 5000
         
         # Color rate tracking
         self.white_rate = 0.0
@@ -55,9 +63,6 @@ class BerryDetector:
         self.dominant_color = max(rates, key=rates.get)
     
     def detect_berries(self, frame):
-        # Adjust brightness if needed
-        frame = cv2.convertScaleAbs(frame, alpha=1, beta=BRIGHTNESS_COMPENSATION)
-        
         # Convert frame to HSV color space
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         
@@ -75,16 +80,41 @@ class BerryDetector:
         red_filtered = cv2.bitwise_and(frame, frame, mask=mask_red)
         white_filtered = cv2.bitwise_and(frame, frame, mask=mask_white)
         
-        # Create masks visualization
-        masks = cv2.cvtColor(mask_red + mask_white, cv2.COLOR_GRAY2BGR)
-        
-        # Create filtered display
-        filtered_display = np.hstack((red_filtered, white_filtered))
-        
         # Prepare processed frame with detections
         processed = frame.copy()
+        self.process_mask(mask_red, frame, processed, "Red berry", (0, 0, 255))
+        self.process_mask(mask_white, frame, processed, "White berry", (255, 255, 255))
+        
+        if FLIP_IMAGE:
+            processed = cv2.flip(processed, 1)
+            red_filtered = cv2.flip(red_filtered, 1)
+            white_filtered = cv2.flip(white_filtered, 1)
+        
+        # Prepare mask visualization
+        masks = np.hstack((mask_red, mask_white))
+        masks = cv2.cvtColor(masks, cv2.COLOR_GRAY2RGB)
+        masks = cv2.resize(masks, (FRAME_WIDTH * 2, FRAME_HEIGHT // 2))
+        
+        # Prepare color-filtered frames for display
+        filtered_display = np.hstack((red_filtered, white_filtered))
+        filtered_display = cv2.resize(filtered_display, (FRAME_WIDTH * 3, FRAME_HEIGHT))
         
         return processed, masks, filtered_display
+    
+    def process_mask(self, mask, original, processed, label, color):
+        # Find and process contours
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if self.MIN_AREA < area < self.MAX_AREA:
+                perimeter = cv2.arcLength(contour, True)
+                circularity = 4 * np.pi * area / (perimeter * perimeter)
+                if circularity > self.MIN_CIRCULARITY:
+                    x, y, w, h = cv2.boundingRect(contour)
+                    cv2.rectangle(original, (x, y), (x + w, y + h), color, 2)
+                    cv2.rectangle(processed, (x, y), (x + w, y + h), color, 2)
+                    cv2.putText(original, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                    cv2.putText(processed, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
     
     def add_text_overlay(self, display):
         # Prepare text for display
@@ -121,11 +151,13 @@ class BerryDetector:
             # Resize displays to have the same width
             common_width = 2 * FRAME_WIDTH
             display_resized = cv2.resize(display, (common_width, FRAME_HEIGHT))
+            masks_resized = cv2.resize(masks, (common_width, FRAME_HEIGHT // 2))
             filtered_display_resized = cv2.resize(filtered_display, (common_width, FRAME_HEIGHT))
 
             # Combine all displays
             display_full = np.vstack((
                 display_resized, 
+                masks_resized, 
                 filtered_display_resized
             ))
 
@@ -149,14 +181,6 @@ class BerryDetector:
                 cv2.imwrite(image_path, frame)
                 print(f"Image saved at {image_path}")
 
-            if key == ord('d'):
-                # Log the berry detected - the dominant color
-                if (self.dominant_color.upper() == 'RED'):
-                    print("RED BERRY detected")
-                
-                if (self.dominant_color.upper() == 'WHITE'):
-                    print("UNRIPE BERRY detected")
-                    
         # Release everything when done
         self.cap.release()
         cv2.destroyAllWindows()
